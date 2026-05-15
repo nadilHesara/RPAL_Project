@@ -6,6 +6,9 @@
 
 typedef struct Parser {
     Lexer *lexer;
+    Token current;
+    int has_current;
+    int had_error;
 } Parser;
 
 void parser_init(Parser *parser, Lexer *lexer);
