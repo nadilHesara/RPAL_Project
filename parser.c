@@ -11,7 +11,7 @@ void parser_init(Parser *parser, Lexer *lexer)
     parser->lexer = lexer;
 }
 
-AstNode *parser_parse(Parser *parser)
+ASTNode *parser_parse(Parser *parser)
 {
     (void)parser;
 
@@ -19,5 +19,5 @@ AstNode *parser_parse(Parser *parser)
      * Parsing will be implemented after the RPAL lexer is complete.
      * Return an empty root node for now.
      */
-    return ast_node_create(AST_NODE_EMPTY, NULL);
+    return create_ast_node("");
 }

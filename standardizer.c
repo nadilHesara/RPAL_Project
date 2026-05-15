@@ -1,6 +1,6 @@
 #include "standardizer.h"
 
-AstNode *standardize_ast(AstNode *root)
+ASTNode *standardize_ast(ASTNode *root)
 {
     /*
      * RPAL standardization rules will transform the AST in place later.

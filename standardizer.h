@@ -3,6 +3,6 @@
 
 #include "ast.h"
 
-AstNode *standardize_ast(AstNode *root);
+ASTNode *standardize_ast(ASTNode *root);
 
 #endif

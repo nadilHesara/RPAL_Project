@@ -3,6 +3,6 @@
 
 #include "ast.h"
 
-int cse_evaluate(AstNode *root);
+int cse_evaluate(ASTNode *root);
 
 #endif
