@@ -4,14 +4,14 @@
 
 static ASTNode *standardize_node(ASTNode *node);
 static ASTNode *copy_node(const char *label);
-static ASTNode *standardize_children_to_list(ASTNode *source, const char *label);
 static ASTNode *standardize_definition(ASTNode *node);
 static ASTNode *standardize_fcn_form(ASTNode *node);
 static ASTNode *standardize_lambda(ASTNode *params_node, ASTNode *body);
 static ASTNode *standardize_at(ASTNode *node);
+static ASTNode *standardize_let(ASTNode *definition, ASTNode *body);
+static ASTNode *standardize_rec_definition(ASTNode *definition);
+static ASTNode *make_lambda_chain(ASTNode *param, ASTNode *body);
 static void append_standardized_children(ASTNode *target, ASTNode *source);
-static void append_param_list(ASTNode *target, ASTNode *node);
-static ASTNode *make_tuple_from_list(ASTNode *list_node);
 
 ASTNode *standardize_ast(ASTNode *root)
 {
@@ -32,18 +32,31 @@ static ASTNode *standardize_node(ASTNode *node)
     }
 
     if (strcmp(node->label, "where") == 0) {
-        ASTNode *defs = standardize_node(node->first_child->next_sibling);
-        ASTNode *expr = standardize_node(node->first_child);
-        result = copy_node("let");
-        add_child(result, defs);
-        add_child(result, expr);
-        return result;
+        return standardize_let(node->first_child->next_sibling, node->first_child);
     }
 
     if (strcmp(node->label, "within") == 0) {
         ASTNode *left = standardize_definition(node->first_child);
         ASTNode *right = standardize_definition(node->first_child->next_sibling);
-        result = copy_node("let");
+
+        if (left != NULL && right != NULL && strcmp(left->label, "=") == 0 &&
+            strcmp(right->label, "=") == 0 && left->first_child != NULL &&
+            left->first_child->next_sibling != NULL && right->first_child != NULL &&
+            right->first_child->next_sibling != NULL) {
+            ASTNode *def = copy_node("=");
+            ASTNode *gamma = copy_node("gamma");
+            ASTNode *lambda = copy_node("lambda");
+
+            add_child(lambda, standardize_node(left->first_child));
+            add_child(lambda, standardize_node(right->first_child->next_sibling));
+            add_child(gamma, lambda);
+            add_child(gamma, standardize_node(left->first_child->next_sibling));
+            add_child(def, standardize_node(right->first_child));
+            add_child(def, gamma);
+            return def;
+        }
+
+        result = copy_node("within");
         add_child(result, left);
         add_child(result, right);
         return result;
@@ -54,7 +67,14 @@ static ASTNode *standardize_node(ASTNode *node)
     }
 
     if (strcmp(node->label, "lambda") == 0) {
-        return standardize_lambda(node->first_child, node->first_child->next_sibling);
+        if (node->first_child != NULL && strcmp(node->first_child->label, "params") == 0) {
+            return standardize_lambda(node->first_child, node->first_child->next_sibling);
+        }
+
+        result = copy_node("lambda");
+        add_child(result, standardize_node(node->first_child));
+        add_child(result, standardize_node(node->first_child != NULL ? node->first_child->next_sibling : NULL));
+        return result;
     }
 
     if (strcmp(node->label, "@") == 0) {
@@ -62,9 +82,7 @@ static ASTNode *standardize_node(ASTNode *node)
     }
 
     if (strcmp(node->label, "rec") == 0) {
-        result = copy_node("rec");
-        add_child(result, standardize_definition(node->first_child));
-        return result;
+        return standardize_rec_definition(standardize_definition(node->first_child));
     }
 
     if (strcmp(node->label, "and") == 0) {
@@ -89,9 +107,7 @@ static ASTNode *standardize_node(ASTNode *node)
     }
 
     if (strcmp(node->label, "let") == 0) {
-        result = copy_node("let");
-        append_standardized_children(result, node);
-        return result;
+        return standardize_let(node->first_child, node->first_child->next_sibling);
     }
 
     if (strcmp(node->label, "tau") == 0 || strcmp(node->label, "gamma") == 0 ||
@@ -104,8 +120,7 @@ static ASTNode *standardize_node(ASTNode *node)
         strcmp(node->label, "ge") == 0 || strcmp(node->label, "ls") == 0 ||
         strcmp(node->label, "le") == 0 || strcmp(node->label, "eq") == 0 ||
         strcmp(node->label, "ne") == 0 || strcmp(node->label, "->") == 0 ||
-        strcmp(node->label, "Vl") == 0 || strcmp(node->label, "params") == 0 ||
-        strcmp(node->label, "()") == 0) {
+        strcmp(node->label, "Vl") == 0 || strcmp(node->label, "()") == 0) {
         result = copy_node(node->label);
         append_standardized_children(result, node);
         return result;
@@ -127,9 +142,7 @@ static ASTNode *standardize_definition(ASTNode *node)
     }
 
     if (strcmp(node->label, "rec") == 0) {
-        ASTNode *result = copy_node("rec");
-        add_child(result, standardize_definition(node->first_child));
-        return result;
+        return standardize_rec_definition(standardize_definition(node->first_child));
     }
 
     if (strcmp(node->label, "and") == 0) {
@@ -168,17 +181,13 @@ static ASTNode *standardize_fcn_form(ASTNode *node)
 
 static ASTNode *standardize_lambda(ASTNode *params_node, ASTNode *body)
 {
-    ASTNode *lambda = copy_node("lambda");
-    ASTNode *params = copy_node("params");
-    ASTNode *child = NULL;
+    ASTNode *first_param = params_node;
 
-    if (params_node != NULL) {
-        append_param_list(params, params_node);
+    if (params_node != NULL && strcmp(params_node->label, "params") == 0) {
+        first_param = params_node->first_child;
     }
 
-    add_child(lambda, params);
-    add_child(lambda, standardize_node(body));
-    return lambda;
+    return make_lambda_chain(first_param, standardize_node(body));
 }
 
 static ASTNode *standardize_at(ASTNode *node)
@@ -201,6 +210,77 @@ static ASTNode *copy_node(const char *label)
     return create_ast_node(label);
 }
 
+static ASTNode *standardize_let(ASTNode *definition, ASTNode *body)
+{
+    ASTNode *std_definition = standardize_definition(definition);
+    ASTNode *gamma = NULL;
+    ASTNode *lambda = NULL;
+
+    if (std_definition == NULL || strcmp(std_definition->label, "=") != 0 ||
+        std_definition->first_child == NULL ||
+        std_definition->first_child->next_sibling == NULL) {
+        ASTNode *fallback = copy_node("let");
+        add_child(fallback, std_definition);
+        add_child(fallback, standardize_node(body));
+        return fallback;
+    }
+
+    gamma = copy_node("gamma");
+    lambda = copy_node("lambda");
+    add_child(lambda, standardize_node(std_definition->first_child));
+    add_child(lambda, standardize_node(body));
+    add_child(gamma, lambda);
+    add_child(gamma, standardize_node(std_definition->first_child->next_sibling));
+    return gamma;
+}
+
+static ASTNode *standardize_rec_definition(ASTNode *definition)
+{
+    ASTNode *result = NULL;
+    ASTNode *gamma = NULL;
+    ASTNode *lambda = NULL;
+
+    if (definition == NULL || strcmp(definition->label, "=") != 0 ||
+        definition->first_child == NULL ||
+        definition->first_child->next_sibling == NULL) {
+        result = copy_node("rec");
+        add_child(result, definition);
+        return result;
+    }
+
+    result = copy_node("=");
+    gamma = copy_node("gamma");
+    lambda = copy_node("lambda");
+
+    add_child(lambda, standardize_node(definition->first_child));
+    add_child(lambda, standardize_node(definition->first_child->next_sibling));
+    add_child(gamma, copy_node("Y*"));
+    add_child(gamma, lambda);
+    add_child(result, standardize_node(definition->first_child));
+    add_child(result, gamma);
+    return result;
+}
+
+static ASTNode *make_lambda_chain(ASTNode *param, ASTNode *body)
+{
+    ASTNode *lambda = copy_node("lambda");
+
+    if (param == NULL) {
+        add_child(lambda, copy_node("()"));
+        add_child(lambda, body);
+        return lambda;
+    }
+
+    add_child(lambda, standardize_node(param));
+    if (param->next_sibling != NULL) {
+        add_child(lambda, make_lambda_chain(param->next_sibling, body));
+    } else {
+        add_child(lambda, body);
+    }
+
+    return lambda;
+}
+
 static void append_standardized_children(ASTNode *target, ASTNode *source)
 {
     ASTNode *child = NULL;
@@ -212,34 +292,4 @@ static void append_standardized_children(ASTNode *target, ASTNode *source)
     for (child = source->first_child; child != NULL; child = child->next_sibling) {
         add_child(target, standardize_node(child));
     }
-}
-
-static void append_param_list(ASTNode *target, ASTNode *node)
-{
-    ASTNode *child = NULL;
-
-    if (target == NULL || node == NULL) {
-        return;
-    }
-
-    if (strcmp(node->label, "Vl") == 0 || strcmp(node->label, "params") == 0 || strcmp(node->label, "tau") == 0) {
-        for (child = node->first_child; child != NULL; child = child->next_sibling) {
-            append_param_list(target, child);
-        }
-        return;
-    }
-
-    if (strcmp(node->label, "()") == 0) {
-        add_child(target, copy_node("()"));
-        return;
-    }
-
-    if (node->first_child != NULL) {
-        for (child = node->first_child; child != NULL; child = child->next_sibling) {
-            append_param_list(target, child);
-        }
-        return;
-    }
-
-    add_child(target, copy_node(node->label));
 }
