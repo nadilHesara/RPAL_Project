@@ -36,12 +36,7 @@ This creates a Linux executable named `rpal20`.
 
 #### Windows PowerShell
 ```powershell
-make
-```
-
-If your Windows compiler does not automatically create `rpal20.exe`, build it directly:
-```powershell
-gcc -Wall -Wextra -std=c99 -pedantic -o rpal20.exe rpal20.c lexer.c ast.c parser.c standardizer.c cse.c utils.c
+.\build.bat
 ```
 
 This creates a Windows executable named `rpal20.exe`.
@@ -152,10 +147,7 @@ make
 cd D:\Projects\RPAL_Project
 
 # Build
-make
-
-# If make does not produce rpal20.exe, build directly
-gcc -Wall -Wextra -std=c99 -pedantic -o rpal20.exe rpal20.c lexer.c ast.c parser.c standardizer.c cse.c utils.c
+.\build.bat
 
 # Test lexer output
 .\rpal20.exe -tokens test.txt
