@@ -1,1 +1,8 @@
 PDF
+ast.o
+cse.o
+lexer.o
+parser.o
+rpal20.o
+standardizer.o
+utils.o
