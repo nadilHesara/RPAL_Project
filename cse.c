@@ -41,6 +41,7 @@ struct Env {
 static Value *eval_node(ASTNode *node, Env *env);
 static Value *apply_value(Value *function_value, Value *argument_value);
 static Value *apply_builtin(const char *name, Value *argument_value);
+static Value *apply_ystar(Value *argument_value);
 static Value *eval_definition(ASTNode *definition, Env *env, Env **out_env);
 static Value *eval_simple_definition(ASTNode *definition, Env *env, Env **out_env);
 static Value *eval_rec_definition(ASTNode *definition, Env *env, Env **out_env);
@@ -126,7 +127,8 @@ static Value *eval_node(ASTNode *node, Env *env)
                 return copy_value(binding);
             }
 
-            if (strcmp(node->label, "Print") == 0 || strcmp(node->label, "Order") == 0) {
+            if (strcmp(node->label, "Print") == 0 || strcmp(node->label, "Order") == 0 ||
+                strcmp(node->label, "Y*") == 0) {
                 return make_builtin_value(node->label);
             }
         }
@@ -417,8 +419,33 @@ static Value *apply_builtin(const char *name, Value *argument_value)
         return make_int_value(0);
     }
 
+    if (strcmp(name, "Y*") == 0) {
+        return apply_ystar(argument_value);
+    }
+
     fprintf(stderr, "Error: unknown builtin '%s'\n", name);
     return NULL;
+}
+
+static Value *apply_ystar(Value *argument_value)
+{
+    Env *recursive_env = NULL;
+    Value *result = NULL;
+
+    if (argument_value == NULL || argument_value->type != VALUE_CLOSURE ||
+        argument_value->param_count == 0) {
+        fprintf(stderr, "Error: Y* expects a unary function\n");
+        return NULL;
+    }
+
+    recursive_env = env_extend(argument_value->closure_env, argument_value->params[0], NULL);
+    result = eval_node(argument_value->body, recursive_env);
+    if (result == NULL) {
+        return NULL;
+    }
+
+    recursive_env->value = result;
+    return result;
 }
 
 static Value *apply_lambda(Value *closure_value, Value *argument_value)
