@@ -63,7 +63,7 @@ static int print_ast_from_source(const char *source)
         return EXIT_FAILURE;
     }
 
-    print_ast(root, 0);
+    print_ast_pretty(root, 0);
     free_ast(root);
     return EXIT_SUCCESS;
 }
@@ -92,7 +92,7 @@ static int print_standardized_tree_from_source(const char *source)
         return EXIT_FAILURE;
     }
 
-    print_ast(st, 0);
+    print_ast_pretty(st, 0);
     free_ast(st);
     return EXIT_SUCCESS;
 }
