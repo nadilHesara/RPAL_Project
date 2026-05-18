@@ -1,0 +1,16 @@
+// let rec Merge(A,i,B,j) =
+//     i > Order(A) -> Remaining(B,j)
+//     | j > Order(B) -> Remaining(A,i)
+//     | (A i) < (B j)
+//         -> (Print (A i), Merge(A, i+1, B, j))
+//         | (Print (B j) , Merge(A, i, B, j+1))
+
+// where rec Remaining(T,x) = x > Order(T) -> nil | (Print (T x) ,Remaining(T,x+1) )
+// in
+//     Merge((1,3,7),1,(2,4,6,8),1)
+
+
+let rec rev s = s eq '' -> '' | ((rev Stern(s)) @Conc (Stem(s)))
+within 
+pal s = not Isstring s -> 'error' | s eq (rev s) -> 'true' | 'false'
+in Print (pal '1234')
