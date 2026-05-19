@@ -825,7 +825,7 @@ static ASTNode *parse_Db(Parser *parser)
                 free_ast(params);
                 return NULL;
             }
-            fcn = create_ast_node("fcn_form");
+            fcn = create_ast_node("function_form");
             add_child(fcn, params);
             add_child(fcn, right);
             return fcn;

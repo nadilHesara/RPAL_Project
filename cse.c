@@ -30,6 +30,7 @@ typedef struct Value {
     ASTNode *body;
     Env *closure_env;
     char *builtin_name;
+    struct Value *builtin_argument;
 } Value;
 
 struct Env {
@@ -40,7 +41,7 @@ struct Env {
 
 static Value *eval_node(ASTNode *node, Env *env);
 static Value *apply_value(Value *function_value, Value *argument_value);
-static Value *apply_builtin(const char *name, Value *argument_value);
+static Value *apply_builtin(Value *builtin_value, Value *argument_value);
 static Value *apply_ystar(Value *argument_value);
 static Value *eval_definition(ASTNode *definition, Env *env, Env **out_env);
 static Value *eval_simple_definition(ASTNode *definition, Env *env, Env **out_env);
@@ -59,9 +60,11 @@ static Value *make_closure_value(ASTNode *body, Env *env, char **params, size_t 
 static Value *make_builtin_value(const char *name);
 static Value *make_dummy_value(void);
 static Value *make_nil_value(void);
+static Value *make_raw_string_value(const char *text);
 static Value *copy_value(Value *value);
 static int value_to_bool(Value *value);
 static long value_to_int(Value *value);
+static int values_equal(Value *left, Value *right);
 static void print_value(Value *value);
 static void print_tuple(Value *value);
 static int is_integer_text(const char *text);
@@ -74,6 +77,8 @@ static Value *make_tuple_from_children(ASTNode *node, Env *env);
 static Value *bind_pattern(ASTNode *pattern, Value *value, Env *env, Env **out_env);
 static Value *bind_name(const char *name, Value *value, Env *env, Env **out_env);
 static int is_identifier_node(ASTNode *node);
+static Value *apply_stem(Value *argument_value);
+static Value *apply_stern(Value *argument_value);
 
 int cse_evaluate(ASTNode *root)
 {
@@ -128,7 +133,9 @@ static Value *eval_node(ASTNode *node, Env *env)
             }
 
             if (strcmp(node->label, "Print") == 0 || strcmp(node->label, "Order") == 0 ||
-                strcmp(node->label, "Y*") == 0) {
+                strcmp(node->label, "Y*") == 0 || strcmp(node->label, "Stem") == 0 ||
+                strcmp(node->label, "Stern") == 0 || strcmp(node->label, "Conc") == 0 ||
+                strcmp(node->label, "Isstring") == 0 || strcmp(node->label, "IsString") == 0) {
                 return make_builtin_value(node->label);
             }
         }
@@ -159,12 +166,24 @@ static Value *eval_node(ASTNode *node, Env *env)
     }
 
     if (strcmp(node->label, "lambda") == 0) {
+        ASTNode *body = node->first_child;
+        ASTNode *param = NULL;
+        char **params = NULL;
         size_t count = 0;
-        char **params = collect_params(node->first_child, &count);
-        if (params == NULL && count != 0) {
+
+        while (body != NULL && body->next_sibling != NULL) {
+            body = body->next_sibling;
+        }
+
+        if (body == NULL) {
             return NULL;
         }
-        return make_closure_value(node->first_child->next_sibling, env, params, count);
+
+        for (param = node->first_child; param != NULL && param != body; param = param->next_sibling) {
+            collect_param_names(param, &params, &count);
+        }
+
+        return make_closure_value(body, env, params, count);
     }
 
     if (strcmp(node->label, "let") == 0) {
@@ -331,9 +350,9 @@ static Value *eval_node(ASTNode *node, Env *env)
         } else if (strcmp(node->label, "le") == 0) {
             result = make_bool_value(value_to_int(left) <= value_to_int(right));
         } else if (strcmp(node->label, "eq") == 0) {
-            result = make_bool_value(value_to_int(left) == value_to_int(right));
+            result = make_bool_value(values_equal(left, right));
         } else if (strcmp(node->label, "ne") == 0) {
-            result = make_bool_value(value_to_int(left) != value_to_int(right));
+            result = make_bool_value(!values_equal(left, right));
         } else if (strcmp(node->label, "or") == 0) {
             result = make_bool_value(value_to_bool(left) || value_to_bool(right));
         } else if (strcmp(node->label, "&") == 0) {
@@ -345,20 +364,33 @@ static Value *eval_node(ASTNode *node, Env *env)
         return result;
     }
 
-    if (strcmp(node->label, "@")==0) {
+    if (strcmp(node->label, "@") == 0) {
+        Value *left_value = eval_node(node->first_child, env);
         Value *function_value = eval_node(node->first_child->next_sibling, env);
-        Value *argument_value = eval_node(node->first_child, env);
+        Value *right_value = eval_node(node->first_child->next_sibling->next_sibling, env);
+        Value *partial_value = NULL;
         Value *result = NULL;
 
-        if (function_value == NULL || argument_value == NULL) {
+        if (left_value == NULL || function_value == NULL || right_value == NULL) {
+            free_value(left_value);
             free_value(function_value);
-            free_value(argument_value);
+            free_value(right_value);
             return NULL;
         }
 
-        result = apply_value(function_value, argument_value);
+        partial_value = apply_value(function_value, left_value);
+        if (partial_value == NULL) {
+            free_value(left_value);
+            free_value(function_value);
+            free_value(right_value);
+            return NULL;
+        }
+
+        result = apply_value(partial_value, right_value);
+        free_value(left_value);
         free_value(function_value);
-        free_value(argument_value);
+        free_value(right_value);
+        free_value(partial_value);
         return result;
     }
 
@@ -391,7 +423,7 @@ static Value *apply_value(Value *function_value, Value *argument_value)
     }
 
     if (function_value->type == VALUE_BUILTIN) {
-        return apply_builtin(function_value->builtin_name, argument_value);
+        return apply_builtin(function_value, argument_value);
     }
 
     if (function_value->type == VALUE_CLOSURE) {
@@ -402,8 +434,15 @@ static Value *apply_value(Value *function_value, Value *argument_value)
     return NULL;
 }
 
-static Value *apply_builtin(const char *name, Value *argument_value)
+static Value *apply_builtin(Value *builtin_value, Value *argument_value)
 {
+    const char *name = NULL;
+
+    if (builtin_value == NULL) {
+        return NULL;
+    }
+
+    name = builtin_value->builtin_name;
     if (name == NULL) {
         return NULL;
     }
@@ -417,6 +456,62 @@ static Value *apply_builtin(const char *name, Value *argument_value)
             return make_int_value((long)argument_value->tuple_size);
         }
         return make_int_value(0);
+    }
+
+    if (strcmp(name, "Stem") == 0) {
+        return apply_stem(argument_value);
+    }
+
+    if (strcmp(name, "Stern") == 0) {
+        return apply_stern(argument_value);
+    }
+
+    if (strcmp(name, "Isstring") == 0 || strcmp(name, "IsString") == 0) {
+        return make_bool_value(argument_value != NULL && argument_value->type == VALUE_STRING);
+    }
+
+    if (strcmp(name, "Conc") == 0) {
+        Value *partial = NULL;
+
+        if (argument_value == NULL || argument_value->type != VALUE_STRING) {
+            if (argument_value != NULL && argument_value->type == VALUE_CLOSURE) {
+                fprintf(stderr, "Error: Conc expects a string (got CLOSURE params=%zu)\n", argument_value->param_count);
+            } else {
+                fprintf(stderr, "Error: Conc expects a string (got type=%d)\n", argument_value == NULL ? -1 : argument_value->type);
+            }
+            return NULL;
+        }
+
+        partial = make_builtin_value("Conc.partial");
+        if (partial == NULL) {
+            return NULL;
+        }
+        partial->builtin_argument = copy_value(argument_value);
+        return partial;
+    }
+
+    if (strcmp(name, "Conc.partial") == 0) {
+        const char *left = NULL;
+        const char *right = NULL;
+        char *joined = NULL;
+        Value *result = NULL;
+
+        if (builtin_value->builtin_argument == NULL || builtin_value->builtin_argument->type != VALUE_STRING ||
+            argument_value == NULL || argument_value->type != VALUE_STRING) {
+            fprintf(stderr, "Error: Conc expects two strings\n");
+            return NULL;
+        }
+
+        left = builtin_value->builtin_argument->string_value != NULL ? builtin_value->builtin_argument->string_value : "";
+        right = argument_value->string_value != NULL ? argument_value->string_value : "";
+        joined = join_strings(left, right);
+        if (joined == NULL) {
+            return NULL;
+        }
+
+        result = make_raw_string_value(joined);
+        free(joined);
+        return result;
     }
 
     if (strcmp(name, "Y*") == 0) {
@@ -452,6 +547,7 @@ static Value *apply_lambda(Value *closure_value, Value *argument_value)
 {
     Env *extended = NULL;
     Value *result = NULL;
+    size_t index = 0;
 
     if (closure_value == NULL || closure_value->type != VALUE_CLOSURE) {
         return NULL;
@@ -461,13 +557,32 @@ static Value *apply_lambda(Value *closure_value, Value *argument_value)
         return eval_node(closure_value->body, closure_value->closure_env);
     }
 
-    extended = env_extend(closure_value->closure_env, closure_value->params[0], argument_value);
+    if (closure_value->param_count > 1 && argument_value != NULL &&
+        argument_value->type == VALUE_TUPLE && argument_value->tuple_size == closure_value->param_count) {
+        extended = closure_value->closure_env;
+        for (index = 0; index < closure_value->param_count; index++) {
+            extended = env_extend(extended, closure_value->params[index], copy_value(argument_value->tuple_items[index]));
+        }
+        return eval_node(closure_value->body, extended);
+    }
+
+    extended = env_extend(closure_value->closure_env, closure_value->params[0], copy_value(argument_value));
     if (closure_value->param_count == 1) {
         result = eval_node(closure_value->body, extended);
         return result;
     }
 
-    result = make_closure_value(closure_value->body, extended, closure_value->params + 1, closure_value->param_count - 1);
+    {
+        size_t remaining = closure_value->param_count - 1;
+        char **remaining_params = (char **)calloc(remaining, sizeof(char *));
+        if (remaining_params == NULL) {
+            return NULL;
+        }
+        for (index = 0; index < remaining; index++) {
+            remaining_params[index] = duplicate_text(closure_value->params[index + 1]);
+        }
+        result = make_closure_value(closure_value->body, extended, remaining_params, remaining);
+    }
     return result;
 }
 
@@ -793,6 +908,7 @@ static Value *make_builtin_value(const char *name)
     Value *value = make_value(VALUE_BUILTIN);
     if (value != NULL) {
         value->builtin_name = duplicate_text(name);
+        value->builtin_argument = NULL;
     }
     return value;
 }
@@ -805,6 +921,15 @@ static Value *make_dummy_value(void)
 static Value *make_nil_value(void)
 {
     return make_value(VALUE_NIL);
+}
+
+static Value *make_raw_string_value(const char *text)
+{
+    Value *value = make_value(VALUE_STRING);
+    if (value != NULL) {
+        value->string_value = duplicate_text(text != NULL ? text : "");
+    }
+    return value;
 }
 
 static Value *copy_value(Value *value)
@@ -821,7 +946,7 @@ static Value *copy_value(Value *value)
     case VALUE_BOOL:
         return make_bool_value(value->boolean_value);
     case VALUE_STRING:
-        return make_string_value(value->string_value != NULL ? value->string_value : "");
+        return make_raw_string_value(value->string_value != NULL ? value->string_value : "");
     case VALUE_TUPLE: {
         Value *tuple = make_tuple_value(value->tuple_size);
         if (tuple == NULL) {
@@ -849,8 +974,14 @@ static Value *copy_value(Value *value)
         return make_dummy_value();
     case VALUE_NIL:
         return make_nil_value();
-    case VALUE_BUILTIN:
-        return make_builtin_value(value->builtin_name);
+    case VALUE_BUILTIN: {
+        Value *builtin_copy = make_builtin_value(value->builtin_name);
+        if (builtin_copy == NULL) {
+            return NULL;
+        }
+        builtin_copy->builtin_argument = copy_value(value->builtin_argument);
+        return builtin_copy;
+    }
     default:
         return NULL;
     }
@@ -891,6 +1022,52 @@ static long value_to_int(Value *value)
     }
 
     return 0;
+}
+
+static int values_equal(Value *left, Value *right)
+{
+    size_t index = 0;
+
+    if (left == NULL || right == NULL) {
+        return left == right;
+    }
+
+    if (left->type != right->type) {
+        return 0;
+    }
+
+    switch (left->type) {
+    case VALUE_INT:
+        return left->integer_value == right->integer_value;
+    case VALUE_BOOL:
+        return left->boolean_value == right->boolean_value;
+    case VALUE_STRING:
+        return strcmp(left->string_value != NULL ? left->string_value : "",
+                      right->string_value != NULL ? right->string_value : "") == 0;
+    case VALUE_DUMMY:
+    case VALUE_NIL:
+        return 1;
+    case VALUE_BUILTIN:
+        if (strcmp(left->builtin_name != NULL ? left->builtin_name : "",
+                   right->builtin_name != NULL ? right->builtin_name : "") != 0) {
+            return 0;
+        }
+        return values_equal(left->builtin_argument, right->builtin_argument);
+    case VALUE_CLOSURE:
+        return left->body == right->body && left->closure_env == right->closure_env;
+    case VALUE_TUPLE:
+        if (left->tuple_size != right->tuple_size) {
+            return 0;
+        }
+        for (index = 0; index < left->tuple_size; index++) {
+            if (!values_equal(left->tuple_items[index], right->tuple_items[index])) {
+                return 0;
+            }
+        }
+        return 1;
+    default:
+        return 0;
+    }
 }
 
 static void print_value(Value *value)
@@ -1020,6 +1197,42 @@ static char *decode_string_literal(const char *text)
     return result;
 }
 
+static Value *apply_stem(Value *argument_value)
+{
+    const char *text = NULL;
+    char result[2] = {'\0', '\0'};
+
+    if (argument_value == NULL || argument_value->type != VALUE_STRING) {
+        fprintf(stderr, "Error: Stem expects a string\n");
+        return NULL;
+    }
+
+    text = argument_value->string_value != NULL ? argument_value->string_value : "";
+    if (text[0] == '\0') {
+        return make_raw_string_value("");
+    }
+
+    result[0] = text[0];
+    return make_raw_string_value(result);
+}
+
+static Value *apply_stern(Value *argument_value)
+{
+    const char *text = NULL;
+
+    if (argument_value == NULL || argument_value->type != VALUE_STRING) {
+        fprintf(stderr, "Error: Stern expects a string\n");
+        return NULL;
+    }
+
+    text = argument_value->string_value != NULL ? argument_value->string_value : "";
+    if (*text == '\0') {
+        return make_raw_string_value("");
+    }
+
+    return make_raw_string_value(text + 1);
+}
+
 static char *duplicate_text(const char *text)
 {
     size_t length = 0;
@@ -1037,6 +1250,22 @@ static char *duplicate_text(const char *text)
 
     memcpy(copy, text, length + 1);
     return copy;
+}
+
+static char *join_strings(const char *left, const char *right)
+{
+    size_t left_length = strlen(left != NULL ? left : "");
+    size_t right_length = strlen(right != NULL ? right : "");
+    char *joined = (char *)malloc(left_length + right_length + 1);
+
+    if (joined == NULL) {
+        return NULL;
+    }
+
+    memcpy(joined, left != NULL ? left : "", left_length);
+    memcpy(joined + left_length, right != NULL ? right : "", right_length);
+    joined[left_length + right_length] = '\0';
+    return joined;
 }
 
 static void free_value(Value *value)
@@ -1063,6 +1292,7 @@ static void free_value(Value *value)
 
     free(value->string_value);
     free(value->builtin_name);
+    free_value(value->builtin_argument);
     free(value);
 }
 

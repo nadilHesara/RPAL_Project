@@ -62,7 +62,7 @@ static ASTNode *standardize_node(ASTNode *node)
         return result;
     }
 
-    if (strcmp(node->label, "fcn_form") == 0) {
+    if (strcmp(node->label, "function_form") == 0) {
         return standardize_fcn_form(node);
     }
 
@@ -137,7 +137,7 @@ static ASTNode *standardize_definition(ASTNode *node)
         return NULL;
     }
 
-    if (strcmp(node->label, "fcn_form") == 0) {
+    if (strcmp(node->label, "function_form") == 0) {
         return standardize_fcn_form(node);
     }
 
