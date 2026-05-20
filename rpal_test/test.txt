@@ -1,4 +1,0 @@
-let rec SumN N =
-	N eq 0 -> 0
-	| N + SumN (N-1)
-in Print (SumN 9)
