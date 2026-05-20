@@ -135,7 +135,10 @@ static Value *eval_node(ASTNode *node, Env *env)
             if (strcmp(node->label, "Print") == 0 || strcmp(node->label, "Order") == 0 ||
                 strcmp(node->label, "Y*") == 0 || strcmp(node->label, "Stem") == 0 ||
                 strcmp(node->label, "Stern") == 0 || strcmp(node->label, "Conc") == 0 ||
-                strcmp(node->label, "Isstring") == 0 || strcmp(node->label, "IsString") == 0) {
+                strcmp(node->label, "Isstring") == 0 || strcmp(node->label, "IsString") == 0 ||
+                strcmp(node->label, "Istuple") == 0 || strcmp(node->label, "ItoS") == 0 ||
+                strcmp(node->label, "Isinteger") == 0 || strcmp(node->label, "Isnull") == 0 ||
+                strcmp(node->label, "Isdummy") == 0) {
                 return make_builtin_value(node->label);
             }
         }
@@ -430,6 +433,15 @@ static Value *apply_value(Value *function_value, Value *argument_value)
         return apply_lambda(function_value, argument_value);
     }
 
+    if (function_value->type == VALUE_TUPLE && argument_value != NULL && argument_value->type == VALUE_INT) {
+        long index = argument_value->integer_value;
+        if (index >= 1 && index <= (long)function_value->tuple_size) {
+            return copy_value(function_value->tuple_items[index - 1]);
+        }
+        fprintf(stderr, "Error: tuple index %ld out of bounds (size %zu)\n", index, function_value->tuple_size);
+        return NULL;
+    }
+
     fprintf(stderr, "Error: attempted to apply a non-function value\n");
     return NULL;
 }
@@ -518,6 +530,32 @@ static Value *apply_builtin(Value *builtin_value, Value *argument_value)
         return apply_ystar(argument_value);
     }
 
+    if (strcmp(name, "Istuple") == 0) {
+        return make_bool_value(argument_value != NULL && argument_value->type == VALUE_TUPLE);
+    }
+
+    if (strcmp(name, "Isnull") == 0) {
+        return make_bool_value(argument_value != NULL && argument_value->type == VALUE_NIL);
+    }
+
+    if (strcmp(name, "Isdummy") == 0) {
+        return make_bool_value(argument_value != NULL && argument_value->type == VALUE_DUMMY);
+    }
+
+    if (strcmp(name, "Isinteger") == 0) {
+        return make_bool_value(argument_value != NULL && argument_value->type == VALUE_INT);
+    }
+
+    if (strcmp(name, "ItoS") == 0) {
+        char buf[64];
+        if (argument_value == NULL || argument_value->type != VALUE_INT) {
+            fprintf(stderr, "Error: ItoS expects an integer\n");
+            return NULL;
+        }
+        snprintf(buf, sizeof(buf), "%ld", argument_value->integer_value);
+        return make_raw_string_value(buf);
+    }
+
     fprintf(stderr, "Error: unknown builtin '%s'\n", name);
     return NULL;
 }
@@ -539,7 +577,7 @@ static Value *apply_ystar(Value *argument_value)
         return NULL;
     }
 
-    recursive_env->value = result;
+    recursive_env->value = copy_value(result);
     return result;
 }
 
