@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CS 3513 – RPAL Interpreter Report</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Times New Roman", Times, serif;
+      font-size: 12pt;
+      line-height: 1.6;
+      color: #000;
+      padding: 2.5cm 3cm;
+      max-width: 21cm;
+      margin: auto;
+    }
+    h1 { font-size: 20pt; text-align: center; margin-bottom: 4pt; }
+    h2 { font-size: 16pt; margin-top: 28pt; margin-bottom: 8pt; border-bottom: 1.5px solid #000; padding-bottom: 3pt; }
+    h3 { font-size: 13pt; margin-top: 18pt; margin-bottom: 6pt; }
+    h4 { font-size: 12pt; margin-top: 12pt; margin-bottom: 4pt; font-style: italic; }
+    p  { margin-bottom: 8pt; }
+    ul, ol { margin-left: 24pt; margin-bottom: 8pt; }
+    li { margin-bottom: 3pt; }
+    pre, code {
+      font-family: "Courier New", Courier, monospace;
+      font-size: 10pt;
+      background: #f5f5f5;
+      border: 1px solid #ccc;
+      border-radius: 3px;
+    }
+    pre { padding: 10pt; overflow-x: auto; margin-bottom: 10pt; white-space: pre-wrap; }
+    code { padding: 1px 4px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 14pt; font-size: 11pt; }
+    th, td { border: 1px solid #999; padding: 5pt 8pt; text-align: left; }
+    th { background: #e8e8e8; font-weight: bold; }
+    .center { text-align: center; }
+    .info-block {
+      border: 1px solid #aaa;
+      padding: 14pt;
+      margin: 20pt 0;
+      background: #fafafa;
+    }
+    .info-block table { margin-bottom: 0; }
+    .info-block td { border: none; padding: 3pt 10pt; }
+    .info-block td:first-child { font-weight: bold; width: 160px; }
+    .diagram {
+      font-family: "Courier New", Courier, monospace;
+      font-size: 10pt;
+      background: #f5f5f5;
+      border: 1px solid #ccc;
+      padding: 10pt;
+      margin-bottom: 10pt;
+      white-space: pre;
+    }
+    .page-break { page-break-before: always; }
+    .subtitle { text-align: center; font-size: 13pt; margin-bottom: 6pt; }
+    .course   { text-align: center; font-size: 12pt; margin-bottom: 20pt; color: #333; }
+    .proto-table td:first-child { font-family: "Courier New", Courier, monospace; font-size: 9.5pt; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════  TITLE PAGE  ══════════════════════════ -->
+<br><br>
+<h1>CS 3513 – Programming Languages</h1>
+<p class="subtitle">Programming Project Report</p>
+<p class="course">RPAL Lexical Analyzer, Parser, Standardizer &amp; CSE Machine</p>
+
+<div class="info-block">
+  <table>
+    <tr><td>Student 1 Name</td><td>___________________________________</td></tr>
+    <tr><td>Student 1 Index No.</td><td>___________________________________</td></tr>
+    <tr><td>Student 2 Name</td><td>___________________________________</td></tr>
+    <tr><td>Student 2 Index No.</td><td>___________________________________</td></tr>
+    <tr><td>Date Submitted</td><td>___________________________________</td></tr>
+    <tr><td>Language Used</td><td>C (C99 standard)</td></tr>
+    <tr><td>Executable Name</td><td><code>rpal20</code></td></tr>
+  </table>
+</div>
+
+<br>
+<p class="center"><em>
+  Department of Computer Science &amp; Engineering<br>
+  University of Moratuwa
+</em></p>
+
+<!-- ══════════════════════════  1. INTRODUCTION  ══════════════════════════ -->
+<div class="page-break"></div>
+<h2>1. Introduction</h2>
+
+<p>
+  This report describes the design and implementation of a complete interpreter for the
+  RPAL (Right-reference Pedagogic Algorithmic Language) programming language. The project
+  was implemented in C (C99 standard) and covers the full pipeline required:
+</p>
+<ol>
+  <li><strong>Lexical Analysis</strong> – tokenising the RPAL source text</li>
+  <li><strong>Parsing</strong> – constructing an Abstract Syntax Tree (AST) from the token stream according to the RPAL grammar</li>
+  <li><strong>Standardization</strong> – converting the AST into a Standardized Tree (ST)</li>
+  <li><strong>Evaluation</strong> – executing the ST on the CSE (Control-Stack-Environment) machine</li>
+</ol>
+
+<p>
+  No external tools such as <code>lex</code>, <code>yacc</code>, or any parser-generator
+  were used. All components are implemented from scratch.
+</p>
+
+<!-- ══════════════════════════  2. OVERALL STRUCTURE  ══════════════════════════ -->
+<h2>2. Program Structure</h2>
+
+<h3>2.1 Module Overview</h3>
+
+<p>
+  The project is divided into seven C source/header file pairs plus a Makefile.
+  Each module has a single, well-defined responsibility.
+</p>
+
+<table>
+  <tr>
+    <th>File(s)</th>
+    <th>Responsibility</th>
+    <th>Lines</th>
+  </tr>
+  <tr><td><code>rpal20.c</code></td><td>Main entry point, CLI argument handling, pipeline orchestration</td><td>195</td></tr>
+  <tr><td><code>lexer.c / lexer.h</code></td><td>Lexical analyzer – converts source text to a stream of tokens</td><td>391 / 34</td></tr>
+  <tr><td><code>ast.c / ast.h</code></td><td>AST node data structure: creation, traversal, printing, memory management</td><td>268 / 17</td></tr>
+  <tr><td><code>parser.c / parser.h</code></td><td>Recursive-descent parser – builds the AST from the token stream</td><td>953 / 17</td></tr>
+  <tr><td><code>standardizer.c / standardizer.h</code></td><td>AST → ST transformation according to RPAL standardization rules</td><td>295 / 8</td></tr>
+  <tr><td><code>cse.c / cse.h</code></td><td>CSE machine evaluator – interprets the standardized tree</td><td>1,465 / 8</td></tr>
+  <tr><td><code>utils.c / utils.h</code></td><td>File I/O helper</td><td>56 / 6</td></tr>
+</table>
+
+<h3>2.2 Data-Flow Diagram</h3>
+
+<div class="diagram">
+  Source File (.rpal)
+       |
+       v
+  [ utils: read_file_contents() ]
+       |  char* (raw source text)
+       v
+  [ Lexer ]  lexer_init() + lexer_next_token()
+       |  Token stream (on demand)
+       v
+  [ Parser ]  parser_init() + parser_parse()
+       |  ASTNode* (Abstract Syntax Tree)
+       v
+  [ Standardizer ]  standardize_ast()
+       |  ASTNode* (Standardized Tree)
+       v
+  [ CSE Machine ]  cse_evaluate()
+       |
+       v
+  stdout (program output)
+</div>
+
+<!-- ══════════════════════════  3. MODULE DETAILS  ══════════════════════════ -->
+<div class="page-break"></div>
+<h2>3. Module Descriptions and Function Prototypes</h2>
+
+<!-- ─────────────  3.1  UTILS  ───────────── -->
+<h3>3.1 Utility Module (<code>utils.c / utils.h</code>)</h3>
+
+<p>
+  Provides a single helper that reads an entire file into a heap-allocated
+  null-terminated string. It uses <code>fseek</code>/<code>ftell</code> to
+  determine the file size and a single <code>fread</code> call to load the content.
+</p>
+
+<h4>Public Function Prototype</h4>
+<pre>/* Reads the entire file at file_name into a malloc'd buffer.
+   Caller is responsible for free(). Returns NULL on error. */
+char *read_file_contents(const char *file_name);</pre>
+
+<!-- ─────────────  3.2  LEXER  ───────────── -->
+<h3>3.2 Lexical Analyzer (<code>lexer.c / lexer.h</code>)</h3>
+
+<p>
+  The lexer implements the RPAL lexical specification (RPAL_Lex.pdf). It processes
+  the source character-by-character and emits tokens one at a time on demand
+  (lazy/pull model). It tracks line and column numbers for error reporting.
+</p>
+
+<h4>Key Data Types</h4>
+<pre>typedef enum TokenType {
+    TOKEN_IDENTIFIER,  /* letters, digits, underscore */
+    TOKEN_INTEGER,     /* digit sequence               */
+    TOKEN_OPERATOR,    /* symbol operators + word ops  */
+    TOKEN_STRING,      /* single-quoted literal        */
+    TOKEN_PUNCTUATION, /* ( ) ; ,                      */
+    TOKEN_KEYWORD,     /* let in where fn within rec   */
+                       /* true false nil dummy         */
+    TOKEN_EOF,
+    TOKEN_ERROR
+} TokenType;
+
+typedef struct Token {
+    TokenType    type;
+    char        *lexeme;   /* heap-allocated; free with token_destroy() */
+    unsigned long line;
+    unsigned long column;
+} Token;
+
+typedef struct Lexer {
+    const char   *source;
+    unsigned long position;
+    unsigned long line;
+    unsigned long column;
+} Lexer;</pre>
+
+<h4>Public Function Prototypes</h4>
+<pre>/* Initialise the lexer with the source string (not copied). */
+void        lexer_init(Lexer *lexer, const char *source);
+
+/* Return the next token from the stream; caller must call token_destroy(). */
+Token       lexer_next_token(Lexer *lexer);
+
+/* Free the heap-allocated lexeme inside a token. */
+void        token_destroy(Token *token);
+
+/* Return the printable name of a TokenType (e.g. "IDENTIFIER"). */
+const char *token_type_name(TokenType type);</pre>
+
+<h4>Key Internal (Static) Functions</h4>
+<table class="proto-table">
+  <tr><th>Prototype</th><th>Purpose</th></tr>
+  <tr><td>static void skip_spaces_and_comments(Lexer*)</td><td>Skips whitespace and <code>//</code> line comments</td></tr>
+  <tr><td>static Token lex_identifier_or_reserved(Lexer*)</td><td>Reads identifier; classifies as KEYWORD, OPERATOR (word ops), or IDENTIFIER</td></tr>
+  <tr><td>static Token lex_integer(Lexer*)</td><td>Reads a sequence of digits</td></tr>
+  <tr><td>static Token lex_string(Lexer*)</td><td>Reads a single-quoted string with escape processing</td></tr>
+  <tr><td>static Token lex_operator(Lexer*)</td><td>Reads a run of operator symbols</td></tr>
+  <tr><td>static int is_keyword(const char*)</td><td>Checks against the 10 RPAL keywords</td></tr>
+  <tr><td>static int is_word_operator(const char*)</td><td>Checks against the 10 RPAL word-operators</td></tr>
+  <tr><td>static void advance(Lexer*)</td><td>Advances position, updating line/column</td></tr>
+</table>
+
+<!-- ─────────────  3.3  AST  ───────────── -->
+<h3>3.3 Abstract Syntax Tree (<code>ast.c / ast.h</code>)</h3>
+
+<p>
+  The AST is represented as a first-child / next-sibling binary tree. Each node
+  stores a heap-allocated label string. This layout naturally represents
+  n-ary trees while using only two pointers per node.
+</p>
+
+<h4>Key Data Type</h4>
+<pre>typedef struct ASTNode {
+    char           *label;        /* node label (operator, keyword, or value) */
+    struct ASTNode *first_child;  /* leftmost child                           */
+    struct ASTNode *next_sibling; /* right sibling                            */
+} ASTNode;</pre>
+
+<h4>Public Function Prototypes</h4>
+<pre>/* Allocate and initialise a new node with the given label. */
+ASTNode *create_ast_node(const char *label);
+
+/* Append child as the last child of parent. */
+void     add_child(ASTNode *parent, ASTNode *child);
+
+/* Append sibling after the last sibling of node. */
+void     add_sibling(ASTNode *node, ASTNode *sibling);
+
+/* Print the tree using dot-indentation (raw labels). */
+void     print_ast(ASTNode *root, int depth);
+
+/* Print the tree using typed leaf notation: &lt;INT:n&gt;, &lt;STR:'s'&gt;, &lt;ID:x&gt;. */
+void     print_ast_pretty(ASTNode *root, int depth);
+
+/* Recursively free an entire subtree. */
+void     free_ast(ASTNode *root);</pre>
+
+<!-- ─────────────  3.4  PARSER  ───────────── -->
+<div class="page-break"></div>
+<h3>3.4 Parser (<code>parser.c / parser.h</code>)</h3>
+
+<p>
+  The parser is a hand-written recursive-descent parser that directly implements
+  the RPAL grammar (RPAL_Grammar.pdf). Each non-terminal in the grammar corresponds
+  to one static <code>parse_X</code> function. The parser operates in a single
+  left-to-right pass over the token stream, building the AST bottom-up.
+</p>
+
+<h4>Key Data Type</h4>
+<pre>typedef struct Parser {
+    Lexer *lexer;       /* token source                      */
+    Token  current;     /* current look-ahead token          */
+    int    has_current; /* whether current holds a valid tok */
+    int    had_error;   /* set on first parse error          */
+} Parser;</pre>
+
+<h4>Public Function Prototypes</h4>
+<pre>/* Bind the parser to a lexer; must be called before parser_parse(). */
+void      parser_init(Parser *parser, Lexer *lexer);
+
+/* Parse a complete RPAL program and return its AST root (or NULL on error). */
+ASTNode  *parser_parse(Parser *parser);</pre>
+
+<h4>Grammar Non-Terminal Functions (Static)</h4>
+<table class="proto-table">
+  <tr><th>Function</th><th>Grammar Rule</th></tr>
+  <tr><td>static ASTNode *parse_E(Parser*)</td><td>E  → let D in E | fn Vb+ . E | Ew</td></tr>
+  <tr><td>static ASTNode *parse_Ew(Parser*)</td><td>Ew → T where Dr | T</td></tr>
+  <tr><td>static ASTNode *parse_T(Parser*)</td><td>T  → Ta ( , Ta )* | Ta</td></tr>
+  <tr><td>static ASTNode *parse_Ta(Parser*)</td><td>Ta → Ta aug Tc | Tc</td></tr>
+  <tr><td>static ASTNode *parse_Tc(Parser*)</td><td>Tc → B -&gt; Tc | B</td></tr>
+  <tr><td>static ASTNode *parse_B(Parser*)</td><td>B  → B or Bt | Bt</td></tr>
+  <tr><td>static ASTNode *parse_Bt(Parser*)</td><td>Bt → Bt &amp; Bs | Bs</td></tr>
+  <tr><td>static ASTNode *parse_Bs(Parser*)</td><td>Bs → not Bp | Bp</td></tr>
+  <tr><td>static ASTNode *parse_Bp(Parser*)</td><td>Bp → A (gr|ge|ls|le|eq|ne) A | A</td></tr>
+  <tr><td>static ASTNode *parse_A(Parser*)</td><td>A  → A + At | A - At | At</td></tr>
+  <tr><td>static ASTNode *parse_At(Parser*)</td><td>At → At * Af | At / Af | Af</td></tr>
+  <tr><td>static ASTNode *parse_Af(Parser*)</td><td>Af → Ap ** Af | Ap</td></tr>
+  <tr><td>static ASTNode *parse_Ap(Parser*)</td><td>Ap → Ap @ &lt;ID&gt; R | R</td></tr>
+  <tr><td>static ASTNode *parse_R(Parser*)</td><td>R  → R Rn | Rn</td></tr>
+  <tr><td>static ASTNode *parse_Rn(Parser*)</td><td>Rn → &lt;ID&gt; | &lt;INT&gt; | &lt;STR&gt; | true | false | nil | dummy | ( E )</td></tr>
+  <tr><td>static ASTNode *parse_D(Parser*)</td><td>D  → Da within D | Da</td></tr>
+  <tr><td>static ASTNode *parse_Da(Parser*)</td><td>Da → Dr ( and Dr )+ | Dr</td></tr>
+  <tr><td>static ASTNode *parse_Dr(Parser*)</td><td>Dr → rec Db | Db</td></tr>
+  <tr><td>static ASTNode *parse_Db(Parser*)</td><td>Db → Vl = E | &lt;ID&gt; Vb+ = E | ( D )</td></tr>
+  <tr><td>static ASTNode *parse_Vl(Parser*)</td><td>Vl → &lt;ID&gt; (, &lt;ID&gt;)*</td></tr>
+  <tr><td>static ASTNode *parse_Vb(Parser*)</td><td>Vb → &lt;ID&gt; | ( Vl ) | ()</td></tr>
+</table>
+
+<h4>Parser Helper Functions (Static)</h4>
+<table class="proto-table">
+  <tr><th>Function</th><th>Purpose</th></tr>
+  <tr><td>static void     parser_advance(Parser*)</td><td>Consume current token and fetch next</td></tr>
+  <tr><td>static int      parser_check(Parser*, TokenType, const char*)</td><td>Check current token type and optional lexeme</td></tr>
+  <tr><td>static int      parser_check_identifier(Parser*)</td><td>True if current token is an identifier</td></tr>
+  <tr><td>static int      parser_check_literal(Parser*)</td><td>True if current token is INT, STRING, true, false, nil, or dummy</td></tr>
+  <tr><td>static int      parser_starts_rn(Parser*)</td><td>True if current token can start an Rn</td></tr>
+  <tr><td>static ASTNode *parser_error(Parser*, const char*)</td><td>Emit an error message and return NULL</td></tr>
+  <tr><td>static ASTNode *make_leaf_from_token(Token*)</td><td>Create a leaf AST node from the current token</td></tr>
+  <tr><td>static ASTNode *make_list_node(const char*)</td><td>Create an interior list node</td></tr>
+  <tr><td>static void     list_append(ASTNode*, ASTNode*)</td><td>Append a child to a list node</td></tr>
+</table>
+
+<!-- ─────────────  3.5  STANDARDIZER  ───────────── -->
+<div class="page-break"></div>
+<h3>3.5 Standardizer (<code>standardizer.c / standardizer.h</code>)</h3>
+
+<p>
+  The standardizer transforms the parsed AST into a Standardized Tree (ST) by
+  applying the RPAL standardization rules. It performs a recursive post-order
+  traversal; nodes whose labels match a standardization rule are rewritten, while
+  all other nodes are copied unchanged.
+</p>
+
+<h4>Public Function Prototype</h4>
+<pre>/* Transform root AST into a standardized tree.
+   Returns a freshly allocated ST; caller must free_ast() the result. */
+ASTNode *standardize_ast(ASTNode *root);</pre>
+
+<h4>Internal (Static) Functions</h4>
+<table class="proto-table">
+  <tr><th>Function</th><th>Standardization rule handled</th></tr>
+  <tr><td>static ASTNode *standardize_node(ASTNode*)</td><td>Dispatcher – routes to the correct rule or copies the node</td></tr>
+  <tr><td>static ASTNode *standardize_definition(ASTNode*)</td><td>Handles <code>function_form</code>, <code>rec</code>, and <code>and</code> definition forms</td></tr>
+  <tr><td>static ASTNode *standardize_fcn_form(ASTNode*)</td><td><code>function_form</code> → curried <code>lambda</code> chain under <code>=</code></td></tr>
+  <tr><td>static ASTNode *standardize_lambda(ASTNode* params, ASTNode* body)</td><td>Multi-parameter <code>lambda</code> → nested single-parameter lambdas</td></tr>
+  <tr><td>static ASTNode *standardize_at(ASTNode*)</td><td><code>E1 @f E2</code> → <code>gamma(gamma(f, E1), E2)</code></td></tr>
+  <tr><td>static ASTNode *standardize_let(ASTNode* def, ASTNode* body)</td><td><code>let D in E</code> → <code>gamma(lambda(x, E), P)</code></td></tr>
+  <tr><td>static ASTNode *standardize_rec_definition(ASTNode*)</td><td><code>rec D</code> → <code>x = gamma(Y*, lambda(x, P))</code></td></tr>
+  <tr><td>static ASTNode *make_lambda_chain(ASTNode* param, ASTNode* body)</td><td>Build a right-nested chain of single-parameter lambdas</td></tr>
+  <tr><td>static void     append_standardized_children(ASTNode*, ASTNode*)</td><td>Recursively standardize and attach all children of a node</td></tr>
+  <tr><td>static ASTNode *copy_node(const char* label)</td><td>Allocate a fresh leaf node with the given label</td></tr>
+</table>
+
+<h4>Standardization Rules Applied</h4>
+<table>
+  <tr><th>AST Node</th><th>Standardized Form</th></tr>
+  <tr><td><code>let x = P in E</code></td><td><code>gamma( lambda(x, E), P )</code></td></tr>
+  <tr><td><code>fn x . E</code></td><td><code>lambda(x, E)</code></td></tr>
+  <tr><td><code>where E D</code></td><td><code>gamma( lambda(x, E), P )</code> (same as let)</td></tr>
+  <tr><td><code>within D1 D2</code></td><td><code>= ( x2, gamma(lambda(x1, P2), P1) )</code></td></tr>
+  <tr><td><code>and D1, D2, …</code></td><td><code>= ( tau(x1,x2,…), tau(P1,P2,…) )</code></td></tr>
+  <tr><td><code>rec x = P</code></td><td><code>= ( x, gamma(Y*, lambda(x, P)) )</code></td></tr>
+  <tr><td><code>E1 @f E2</code></td><td><code>gamma( gamma(f, E1), E2 )</code></td></tr>
+  <tr><td><code>function_form f x1…xn = E</code></td><td><code>= ( f, lambda(x1, lambda(…, E)) )</code></td></tr>
+</table>
+
+<!-- ─────────────  3.6  CSE MACHINE  ───────────── -->
+<div class="page-break"></div>
+<h3>3.6 CSE Machine (<code>cse.c / cse.h</code>)</h3>
+
+<p>
+  The CSE (Control-Stack-Environment) machine is the execution engine. It
+  recursively evaluates a standardized tree using environments for name binding
+  and applies lambda closures to arguments. Built-in RPAL functions are handled
+  by a dedicated dispatch function.
+</p>
+
+<h4>Public Function Prototype</h4>
+<pre>/* Evaluate the standardized tree rooted at root.
+   Prints the result to stdout. Returns 0 on success, non-zero on error. */
+int cse_evaluate(ASTNode *root);</pre>
+
+<h4>Value Representation</h4>
+<pre>typedef enum ValueType {
+    VALUE_INT,      /* integer                          */
+    VALUE_BOOL,     /* true / false                     */
+    VALUE_STRING,   /* string                           */
+    VALUE_TUPLE,    /* ordered tuple of Values          */
+    VALUE_CLOSURE,  /* lambda closure (body + env + params) */
+    VALUE_DUMMY,    /* RPAL dummy value                 */
+    VALUE_NIL,      /* RPAL nil                         */
+    VALUE_BUILTIN   /* partially applied built-in fn    */
+} ValueType;
+
+typedef struct Value {
+    ValueType  type;
+    long       integer_value;
+    int        boolean_value;
+    char      *string_value;
+    Value    **tuple_items;   size_t tuple_size;
+    char     **params;        size_t param_count;
+    ASTNode   *body;
+    Env       *closure_env;
+    char      *builtin_name;
+    Value     *builtin_argument;
+} Value;</pre>
+
+<h4>Environment</h4>
+<pre>struct Env {
+    char  *name;   /* bound identifier  */
+    Value *value;  /* bound value       */
+    Env   *next;   /* enclosing frame   */
+};</pre>
+
+<h4>Core Evaluation Functions (Static)</h4>
+<table class="proto-table">
+  <tr><th>Prototype</th><th>Purpose</th></tr>
+  <tr><td>static Value *eval_node(ASTNode*, Env*)</td><td>Main recursive evaluator; dispatches on node label</td></tr>
+  <tr><td>static Value *apply_value(Value* fn, Value* arg)</td><td>Apply a value (closure, builtin, Y*) to an argument</td></tr>
+  <tr><td>static Value *apply_lambda(Value* closure, Value* arg)</td><td>Pattern-match argument to closure params, extend env, eval body</td></tr>
+  <tr><td>static Value *apply_builtin(Value* builtin, Value* arg)</td><td>Dispatch built-in RPAL function calls</td></tr>
+  <tr><td>static Value *apply_ystar(Value* arg)</td><td>Apply the fixed-point combinator Y*</td></tr>
+  <tr><td>static Value *eval_definition(ASTNode*, Env*, Env**)</td><td>Evaluate a definition node; extend environment</td></tr>
+  <tr><td>static Value *eval_simple_definition(ASTNode*, Env*, Env**)</td><td>Handle <code>=</code> definition (bind name to value)</td></tr>
+  <tr><td>static Value *eval_rec_definition(ASTNode*, Env*, Env**)</td><td>Handle recursive definitions via self-referential closure</td></tr>
+  <tr><td>static Value *eval_and_definition(ASTNode*, Env*, Env**)</td><td>Handle simultaneous <code>and</code> definitions</td></tr>
+  <tr><td>static Value *make_tuple_from_children(ASTNode*, Env*)</td><td>Build a VALUE_TUPLE from <code>tau</code> node children</td></tr>
+  <tr><td>static Value *bind_pattern(ASTNode*, Value*, Env*, Env**)</td><td>Bind a tuple/identifier pattern to a value</td></tr>
+</table>
+
+<h4>Environment Functions (Static)</h4>
+<table class="proto-table">
+  <tr><th>Prototype</th><th>Purpose</th></tr>
+  <tr><td>static Env   *env_extend(Env*, const char* name, Value*)</td><td>Create a new binding frame linked to parent env</td></tr>
+  <tr><td>static Value *env_lookup(Env*, const char* name)</td><td>Walk the environment chain to find a binding</td></tr>
+</table>
+
+<h4>Value Factory &amp; Utility Functions (Static)</h4>
+<table class="proto-table">
+  <tr><th>Prototype</th><th>Purpose</th></tr>
+  <tr><td>static Value *make_int_value(long)</td><td>Allocate a VALUE_INT</td></tr>
+  <tr><td>static Value *make_bool_value(int)</td><td>Allocate a VALUE_BOOL</td></tr>
+  <tr><td>static Value *make_string_value(const char*)</td><td>Allocate a VALUE_STRING (decodes escape sequences)</td></tr>
+  <tr><td>static Value *make_tuple_value(size_t)</td><td>Allocate an empty tuple of given arity</td></tr>
+  <tr><td>static Value *make_closure_value(ASTNode*, Env*, char**, size_t)</td><td>Allocate a VALUE_CLOSURE</td></tr>
+  <tr><td>static Value *make_builtin_value(const char*)</td><td>Allocate a VALUE_BUILTIN placeholder</td></tr>
+  <tr><td>static Value *make_dummy_value(void)</td><td>Allocate VALUE_DUMMY</td></tr>
+  <tr><td>static Value *make_nil_value(void)</td><td>Allocate VALUE_NIL</td></tr>
+  <tr><td>static Value *copy_value(Value*)</td><td>Deep-copy a Value</td></tr>
+  <tr><td>static int    values_equal(Value*, Value*)</td><td>Structural equality test</td></tr>
+  <tr><td>static void   print_value(Value*)</td><td>Print a value in RPAL output format</td></tr>
+  <tr><td>static void   print_tuple(Value*)</td><td>Print a tuple in <code>(a, b, c)</code> format</td></tr>
+  <tr><td>static void   free_value(Value*)</td><td>Recursively deallocate a Value</td></tr>
+</table>
+
+<h4>Built-in RPAL Functions Supported</h4>
+<table>
+  <tr><th>Function</th><th>Description</th></tr>
+  <tr><td><code>Print</code></td><td>Print a value to stdout</td></tr>
+  <tr><td><code>Order</code></td><td>Return the arity (length) of a tuple</td></tr>
+  <tr><td><code>Isinteger</code></td><td>Type-test: integer</td></tr>
+  <tr><td><code>Isstring</code></td><td>Type-test: string</td></tr>
+  <tr><td><code>Istuple</code></td><td>Type-test: tuple</td></tr>
+  <tr><td><code>Isdummy</code></td><td>Type-test: dummy</td></tr>
+  <tr><td><code>Istruthvalue</code></td><td>Type-test: boolean</td></tr>
+  <tr><td><code>Isfunction</code></td><td>Type-test: closure / builtin</td></tr>
+  <tr><td><code>Stem</code></td><td>First character of a string</td></tr>
+  <tr><td><code>Stern</code></td><td>All characters after the first (tail)</td></tr>
+  <tr><td><code>Conc</code></td><td>String concatenation (curried: <code>Conc s1 s2</code>)</td></tr>
+  <tr><td><code>ItoS</code></td><td>Integer to string conversion</td></tr>
+  <tr><td><code>null</code></td><td>Test whether a value is nil</td></tr>
+  <tr><td><code>Y*</code></td><td>Fixed-point combinator for recursion</td></tr>
+</table>
+
+<!-- ─────────────  3.7  MAIN  ───────────── -->
+<h3>3.7 Main Module (<code>rpal20.c</code>)</h3>
+
+<p>
+  The main module wires the pipeline together and handles CLI arguments.
+  It supports four modes of operation:
+</p>
+<ul>
+  <li><code>./rpal20 file</code> – full execution (lex → parse → standardize → evaluate)</li>
+  <li><code>./rpal20 -tokens file</code> – print the token stream and exit</li>
+  <li><code>./rpal20 -ast file</code> – print the AST before standardization and exit</li>
+  <li><code>./rpal20 -st file</code> – print the standardized tree and exit</li>
+</ul>
+
+<h4>Static Functions</h4>
+<pre>/* Print usage information to stderr. */
+static void print_usage(const char *program_name);
+
+/* Run only the lexer and print all tokens. */
+static int print_tokens(const char *source);
+
+/* Run lexer + parser and print the AST. */
+static int print_ast_from_source(const char *source);
+
+/* Run lexer + parser + standardizer and print the ST. */
+static int print_standardized_tree_from_source(const char *source);
+
+/* Run the full pipeline and print the program output. */
+static int execute_source(const char *source);</pre>
+
+<!-- ══════════════════════════  4. BUILD  ══════════════════════════ -->
+<div class="page-break"></div>
+<h2>4. Build Instructions</h2>
+
+<h3>4.1 Makefile</h3>
+<pre>CC     = gcc
+CFLAGS = -Wall -Wextra -std=c99 -pedantic
+TARGET = rpal20
+SRCS   = rpal20.c lexer.c ast.c parser.c standardizer.c cse.c utils.c
+OBJS   = $(SRCS:.c=.o)
+
+all: $(TARGET)
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS)
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+clean:
+	rm -f $(OBJS) $(TARGET)</pre>
+
+<h3>4.2 Execution Sequence</h3>
+<pre>tar xvf &lt;submission_file&gt;.tar
+make
+./rpal20 rpal_test_programs/rpal_01 &gt; output.01
+diff output.01 rpal_test_programs/output01.test
+./rpal20 rpal_test_programs/rpal_02 &gt; output.02
+diff output.02 rpal_test_programs/output02.test
+...
+</pre>
+
+<!-- ══════════════════════════  5. TEST RESULTS  ══════════════════════════ -->
+<h2>5. Test Results</h2>
+
+<p>
+  The interpreter was tested against twelve RPAL programs covering a range of
+  language features. All tests produce output that matches the expected output
+  files with zero differences.
+</p>
+
+<table>
+  <tr>
+    <th>Test</th>
+    <th>Program</th>
+    <th>Feature Tested</th>
+    <th>Expected Output</th>
+    <th>Result</th>
+  </tr>
+  <tr><td>rpal_01</td><td>fn1</td><td>Higher-order functions, conditional</td><td><code>4</code></td><td>PASS</td></tr>
+  <tr><td>rpal_02</td><td>fn2</td><td>Higher-order functions, <code>Stern</code></td><td><code>irst letter missing in this sentence?</code></td><td>PASS</td></tr>
+  <tr><td>rpal_03</td><td>fn3</td><td>Nested function application</td><td><code>15</code></td><td>PASS</td></tr>
+  <tr><td>rpal_04</td><td>ftst</td><td>Recursive functions (<code>rec</code>), Fibonacci</td><td><code>1</code></td><td>PASS</td></tr>
+  <tr><td>rpal_05</td><td>infix</td><td>Infix operator <code>@</code></td><td><code>13</code></td><td>PASS</td></tr>
+  <tr><td>rpal_06</td><td>infix2</td><td>Infix operator <code>@</code>, multi-arg</td><td><code>18</code></td><td>PASS</td></tr>
+  <tr><td>rpal_07</td><td>pairs1</td><td>Tuples, <code>aug</code>, <code>Conc</code>, <code>where rec</code></td><td><code>(ad, be, cf)</code></td><td>PASS</td></tr>
+  <tr><td>rpal_08</td><td>pairs2</td><td>Curried form of pairs</td><td><code>(ad, be, cf)</code></td><td>PASS</td></tr>
+  <tr><td>rpal_09</td><td>pairs3</td><td>Anonymous lambda in tuple processing</td><td><code>(ad, be, cf)</code></td><td>PASS</td></tr>
+  <tr><td>rpal_10</td><td>picture</td><td>Recursive tree picture (<code>ItoS</code>, <code>Istuple</code>)</td><td>multi-line tree</td><td>PASS</td></tr>
+  <tr><td>rpal_11</td><td>towers</td><td>Towers of Hanoi, string building</td><td>15-move sequence</td><td>PASS</td></tr>
+  <tr><td>rpal_12</td><td>vectorsum</td><td>Tuple indexing, <code>aug</code>, <code>Order</code></td><td><code>(5, 7, 9)</code></td><td>PASS</td></tr>
+</table>
+
+<!-- ══════════════════════════  6. CONCLUSION  ══════════════════════════ -->
+<h2>6. Conclusion</h2>
+
+<p>
+  A complete RPAL interpreter was implemented from scratch in C (C99), comprising
+  approximately 3,700 lines of code across seven modules. The implementation covers
+  the full pipeline: lexical analysis, recursive-descent parsing, AST standardization,
+  and evaluation on the CSE machine.
+</p>
+<p>
+  All twelve provided test programs execute correctly and their output matches the
+  reference output files exactly. The build system uses a standard GNU Makefile and
+  the executable is named <code>rpal20</code> as required.
+</p>
+
+</body>
+</html>
